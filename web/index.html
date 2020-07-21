@@ -1,0 +1,152 @@
+<!DOCTYPE HTML>
+<html lang="es">
+    <meta charset="utf-8" />
+    <title>WEB DEL SENSOR</title>
+    <style>
+        .button {
+        padding: 15px 32px;
+        text-align: center;
+        display: inline-block;
+        font-size: 30px;
+        }
+    </style>
+    </head>
+    <body>
+        <font size="6">
+            <div>
+                <p>Fuerza eje X (G): <span id="max_x">---</span></p>
+                <p>Fuerza eje Y (G): <span id="max_y">---</span></p>
+                <p>Fuerza eje Z (G): <span id="max_z">---</span></p>
+                <p>Módulo de fuerza total (G): <span id="maximo_aceleracion">---</span></p>
+                <p>Distancia al techo (m): <span id="distancia_techo">---</span></p>
+                <p>Distancia máxima al techo (m): 
+                    <select id="techo" class="button" onchange="myFunction()">
+                    </select>
+                </p>
+                <br/>
+                <p>Se encuentra en interior: <span id="insideLed">---</span></p>
+                <p>Se encuentra en exterior: <span id="not_insideLed">---</span></p>
+                <p>Ha detectado golpe: <span id="golpeLed">---</span></p>
+                <p>No ha detectado golpe: <span id="not_golpeLed">---</span></p>
+                <button type="button" class="button" onclick="resetea()">Reset del golpe</button>
+            </div>
+            <p>Rango fuerza de impacto (G): 
+                <select id="impacto" class="button" onchange="myFunction()">
+                </select>
+            </p>
+            <div id="lista"></div>
+        </font>
+    </body>
+</html>
+<script>
+    var resetear = 0;
+    var anterior = 0;
+    var max_x = document.getElementById('max_x');
+    var max_y = document.getElementById('max_y');
+    var max_z = document.getElementById('max_z');
+    var maximo_aceleracion = document.getElementById('maximo_aceleracion');
+    var distancia_techo = document.getElementById('distancia_techo');
+    var insideLed = document.getElementById('insideLed');
+    var not_insideLed = document.getElementById('not_insideLed');
+    var golpeLed = document.getElementById('golpeLed');
+    var not_golpeLed = document.getElementById('not_golpeLed');
+    var impacto = document.getElementById('impacto');
+    var techo = document.getElementById('techo');
+    var lista = document.getElementById('lista');
+    var recibido;
+    
+    window.onload = function(){
+        var inicio_techo = 0.5;
+        var fin_techo = 12.0;
+        var paso_techo = 0.5;
+        var cadena_techo = "";
+        for(var i=inicio_techo; i<=fin_techo; i+=paso_techo){
+            cadena_techo = cadena_techo.concat("<option value='"+(i/paso_techo)+"'>"+i.toFixed(1)+"</option>");
+        }
+        techo.innerHTML = cadena_techo;
+        
+        var inicio_impacto = 0.5;
+        var fin_impacto = 20.0;
+        var paso_impacto = 0.5;
+        var cadena_impacto = "";
+        for(var i=inicio_impacto; i<=fin_impacto; i+=paso_impacto){
+            cadena_impacto = cadena_impacto.concat("<option value='"+(i/paso_impacto)+"'>"+i.toFixed(1)+"</option>");
+        }
+        impacto.innerHTML = cadena_impacto;
+    }
+    
+    function updateUI(counter){
+        recibido= JSON.parse(counter);
+        max_x.innerHTML = recibido.acelerometro.x;
+        max_y.innerHTML = recibido.acelerometro.y;
+        max_z.innerHTML = recibido.acelerometro.z;
+        maximo_aceleracion.innerHTML = Math.sqrt(recibido.acelerometro.modulo_cuadrado).toFixed(2);
+        distancia_techo.innerHTML = recibido.distancia_techo/100;
+        insideLed.innerHTML = recibido.estados.interior;
+        not_insideLed.innerHTML = 1-recibido.estados.interior;
+        golpeLed.innerHTML = recibido.estados.impacto;
+        not_golpeLed.innerHTML = 1-recibido.estados.impacto;
+        if (recibido.estados.impacto != 0){
+            if(anterior = 0) resetear = 0;
+        }
+        impacto.value = Math.round(2*Math.sqrt(recibido.acelerometro.limite_acel_cuadrado));
+        techo.value = 2*recibido.limite_techo/100;
+        
+        anterior = recibido.estados.impacto;
+        var cantidad = recibido.historial.length-1;
+        var cadena = "";
+        for(i=0; i<cantidad; i++){
+        cadena = cadena.concat("  Fuerza = ");
+        cadena = cadena.concat(Math.sqrt(recibido.historial[i].fuerza).toFixed(2));
+        cadena = cadena.concat("G hace ");
+        var tiempo = recibido.historial[i].tiempo;
+        if(tiempo>=60){
+            if(tiempo>=3600){
+            cadena = cadena.concat(Math.floor(tiempo/3600));
+            cadena = cadena.concat(" horas, ");
+            }
+            cadena = cadena.concat(Math.floor(tiempo/60)%60);
+            cadena = cadena.concat(" minutos y ");
+        }
+        cadena = cadena.concat(tiempo);
+        cadena = cadena.concat(" segundos<br/>");
+        }
+        lista.innerHTML = cadena;
+    }
+    
+    const connection = new EventSource('http://' + window.location.hostname + '/data');
+    connection.onmessage = function (e) {
+        updateUI(e.data);
+    }
+    
+    var resetvar = 0;
+    var xhttp = new XMLHttpRequest();
+
+    function JSonea(){
+        return '{"reset":'+resetvar+',"impacto":'+impacto.value+',"techo":'+techo.value+'}';
+    }
+
+    function resetea(){
+        if(recibido.estados.impacto){
+            xhttp.open('POST', 'http://' + window.location.hostname + '/dato', true);
+            xhttp.setRequestHeader('Content-type', 'application/json');
+            resetvar = 1;
+            xhttp.send(JSonea());
+            resetvar = 0;
+        }
+    }
+    
+    impacto.onchange = function(){
+        xhttp.open('POST', 'http://' + window.location.hostname + '/dato', true);
+        xhttp.setRequestHeader('Content-type', 'application/json');
+        xhttp.send(JSonea());
+    }
+    
+    
+    techo.onchange = function(){
+        xhttp.open('POST', 'http://' + window.location.hostname + '/dato', true);
+        xhttp.setRequestHeader('Content-type', 'application/json');
+        xhttp.send(JSonea());
+    }
+    
+</script>
